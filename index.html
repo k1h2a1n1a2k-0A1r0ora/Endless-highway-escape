@@ -2,53 +2,73 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Highway Escape Mobile</title>
+<title>Highway Escape</title>
 
 <style>
 body {
   margin:0;
-  background:#111;
   overflow:hidden;
+  background:#111;
   font-family:Arial;
 }
 
 canvas {
+  width:100vw;
+  height:100vh;
   display:block;
-  margin:auto;
-  background:#222;
 }
 
-/* MENU */
+/* CENTERED SCREENS */
 #menu, #gameOver {
   position:absolute;
-  width:100%;
+  top:50%;
+  left:50%;
+  transform:translate(-50%, -50%);
   text-align:center;
   color:white;
+  z-index:10;
 }
 
 #gameOver { display:none; }
 
-/* MOBILE CONTROLS */
+/* TEXT */
+#menu h1, #gameOver h1 {
+  font-size:60px;
+}
+
+#gameOver p {
+  font-size:40px;
+}
+
+/* BUTTON */
+button {
+  padding:20px 40px;
+  font-size:30px;
+  margin-top:20px;
+  cursor:pointer;
+}
+
+/* CONTROLS */
 #controls {
-  position:absolute;
-  bottom:20px;
+  position:fixed;
+  bottom:10px;
   width:100%;
-  display:flex;
+  display:none;
   justify-content:center;
-  gap:20px;
+  gap:40px;
+  z-index:10;
 }
 
 .btn {
-  width:70px;
-  height:70px;
-  background:rgba(255,255,255,0.2);
+  width:90px;
+  height:90px;
+  background:rgba(255,255,255,0.3);
   border-radius:50%;
   display:flex;
   justify-content:center;
   align-items:center;
-  font-size:25px;
+  font-size:35px;
   color:white;
-  user-select:none;
 }
 </style>
 </head>
@@ -57,18 +77,18 @@ canvas {
 
 <div id="menu">
   <h1>🏃 Highway Escape</h1>
-  <button onclick="startGame()">Start</button>
+  <button onclick="startGame()">Start Game</button>
 </div>
 
 <div id="gameOver">
-  <h1>💀 Caught!</h1>
+  <h1>💀 Game Over</h1>
   <p id="scoreText"></p>
-  <button onclick="location.reload()">Play Again</button>
+  <button onclick="restartGame()">Play Again</button>
 </div>
 
-<canvas id="gameCanvas" width="600" height="800"></canvas>
+<canvas id="gameCanvas"></canvas>
 
-<!-- TOUCH CONTROLS -->
+<!-- CONTROLS -->
 <div id="controls">
   <div class="btn" id="leftBtn">⬅️</div>
   <div class="btn" id="forwardBtn">⬆️</div>
@@ -83,58 +103,78 @@ canvas {
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let W = canvas.width;
+let H = canvas.height;
+
 let gameRunning = false;
 let score = 0;
 
-// PLAYER (CONTROLLED)
-let player = { x:280, y:650, size:30 };
+// ✅ FIX: initialize immediately
+let player = { x: W/2, y: H-180, size: 80 };
+let chaser = { x: W/2, y: H-60, size: 80 };
 
-// CHASER (AI)
-let chaser = { x:280, y:750, size:30 };
-
-// CARS
 let cars = [];
 let spawnTimer = 0;
 
-// CONTROLS STATE
-let moveLeft=false, moveRight=false, moveForward=false;
+// CONTROLS
+let left=false, right=false, forward=false;
 
-// TOUCH EVENTS
-function addTouch(id, action){
+function setupBtn(id, action){
   let btn = document.getElementById(id);
   btn.ontouchstart = ()=> action(true);
   btn.ontouchend = ()=> action(false);
 }
+setupBtn("leftBtn", v=>left=v);
+setupBtn("rightBtn", v=>right=v);
+setupBtn("forwardBtn", v=>forward=v);
 
-addTouch("leftBtn", v=>moveLeft=v);
-addTouch("rightBtn", v=>moveRight=v);
-addTouch("forwardBtn", v=>moveForward=v);
-
-// KEYBOARD (for laptop)
+// KEYBOARD
 document.addEventListener("keydown", e=>{
-  if(e.key==="ArrowLeft") moveLeft=true;
-  if(e.key==="ArrowRight") moveRight=true;
-  if(e.key==="ArrowUp") moveForward=true;
+  if(e.key==="ArrowLeft") left=true;
+  if(e.key==="ArrowRight") right=true;
+  if(e.key==="ArrowUp") forward=true;
 });
 document.addEventListener("keyup", e=>{
-  if(e.key==="ArrowLeft") moveLeft=false;
-  if(e.key==="ArrowRight") moveRight=false;
-  if(e.key==="ArrowUp") moveForward=false;
+  if(e.key==="ArrowLeft") left=false;
+  if(e.key==="ArrowRight") right=false;
+  if(e.key==="ArrowUp") forward=false;
 });
 
 function startGame(){
   document.getElementById("menu").style.display="none";
+  document.getElementById("gameOver").style.display="none";
+  document.getElementById("controls").style.display="flex";
+
+  // reset
+  player.x = W/2;
+  player.y = H-180;
+  chaser.x = W/2;
+  chaser.y = H-60;
+  cars = [];
+  score = 0;
+
   gameRunning=true;
+
   document.getElementById("engine").play();
   requestAnimationFrame(gameLoop);
 }
 
+function restartGame(){
+  startGame();
+}
+
 function gameOver(){
   gameRunning=false;
+
   document.getElementById("engine").pause();
   document.getElementById("crash").play();
-  document.getElementById("gameOver").style.display="block";
+  document.getElementById("controls").style.display="none";
+
   document.getElementById("scoreText").innerText="Score: "+score;
+  document.getElementById("gameOver").style.display="block";
 }
 
 // COLLISION
@@ -145,93 +185,90 @@ function collide(a,b){
          a.y + a.size > b.y;
 }
 
-// DRAW ROAD
-let roadOffset=0;
+// ROAD
+let offset=0;
 function drawRoad(){
   ctx.fillStyle="#555";
-  ctx.fillRect(0,0,600,800);
+  ctx.fillRect(0,0,W,H);
 
   ctx.strokeStyle="white";
-  ctx.lineWidth=5;
+  ctx.lineWidth=6;
 
-  roadOffset+=6;
+  offset+=8;
 
-  for(let i=-40;i<800;i+=40){
+  for(let i=-40;i<H;i+=40){
     ctx.beginPath();
-    ctx.moveTo(300,i+roadOffset%40);
-    ctx.lineTo(300,i+20+roadOffset%40);
+    ctx.moveTo(W/2, i + (offset%40));
+    ctx.lineTo(W/2, i + 20 + (offset%40));
     ctx.stroke();
   }
 }
 
-// DRAW CAR
+// CAR
 function drawCar(x,y){
   ctx.fillStyle="red";
-  ctx.fillRect(x,y,50,80);
+  ctx.fillRect(x,y,80,120);
 
   ctx.fillStyle="lightblue";
-  ctx.fillRect(x+5,y+10,40,20);
+  ctx.fillRect(x+10,y+20,60,30);
 
   ctx.fillStyle="black";
-  ctx.fillRect(x+5,y+60,10,10);
-  ctx.fillRect(x+35,y+60,10,10);
+  ctx.fillRect(x+10,y+90,15,15);
+  ctx.fillRect(x+55,y+90,15,15);
 }
 
-// GAME LOOP
+// LOOP
 function gameLoop(){
   if(!gameRunning) return;
 
-  ctx.clearRect(0,0,600,800);
+  ctx.clearRect(0,0,W,H);
   drawRoad();
 
-  // PLAYER CONTROL
-  if(moveLeft && player.x>50) player.x-=6;
-  if(moveRight && player.x<520) player.x+=6;
-  if(moveForward) player.y-=3;
-  else player.y+=1; // slows down if not moving
+  if(left && player.x>50) player.x-=8;
+  if(right && player.x<W-100) player.x+=8;
 
-  ctx.font="30px Arial";
+  if(forward) player.y -= 4;
+  else player.y += 2;
+
+  ctx.font="70px Arial";
   ctx.fillText("🏃", player.x, player.y);
 
-  // CHASER AI
-  if(chaser.x < player.x) chaser.x+=1.5;
-  if(chaser.x > player.x) chaser.x-=1.5;
+  if(chaser.x < player.x) chaser.x+=2;
+  if(chaser.x > player.x) chaser.x-=2;
 
-  chaser.y -= moveForward ? 1 : -1; // catches faster if you slow
+  chaser.y -= forward ? 2 : -1;
 
   ctx.fillText("👮", chaser.x, chaser.y);
 
-  // SPAWN CARS
   spawnTimer++;
-  if(spawnTimer>50){
-    let lanes=[100,250,400];
+  if(spawnTimer>40){
+    let lanes=[W*0.2, W*0.5, W*0.75];
     let x=lanes[Math.floor(Math.random()*3)];
-    cars.push({x:x,y:-80,w:50,h:80});
+    cars.push({x:x,y:-120,w:80,h:120});
     spawnTimer=0;
   }
 
-  // MOVE CARS
   for(let i=cars.length-1;i>=0;i--){
     let c=cars[i];
-    c.y+=8;
+    c.y+=10;
+
     drawCar(c.x,c.y);
 
     if(collide(player,c)) gameOver();
 
-    if(c.y>800){
+    if(c.y>H){
       cars.splice(i,1);
       score++;
     }
   }
 
-  // CHASER CATCH
-  if(Math.abs(player.x-chaser.x)<20 && Math.abs(player.y-chaser.y)<30){
+  if(Math.abs(player.x-chaser.x)<40 && Math.abs(player.y-chaser.y)<50){
     gameOver();
   }
 
-  // SCORE
   ctx.fillStyle="white";
-  ctx.fillText("Score: "+score,10,30);
+  ctx.font="30px Arial";
+  ctx.fillText("Score: "+score, 20, 50);
 
   requestAnimationFrame(gameLoop);
 }
