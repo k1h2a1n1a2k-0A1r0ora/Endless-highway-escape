@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Highway Escape Mobile</title>
+
+<style>
+body {
+  margin:0;
+  background:#111;
+  overflow:hidden;
+  font-family:Arial;
+}
+
+canvas {
+  display:block;
+  margin:auto;
+  background:#222;
+}
+
+/* MENU */
+#menu, #gameOver {
+  position:absolute;
+  width:100%;
+  text-align:center;
+  color:white;
+}
+
+#gameOver { display:none; }
+
+/* MOBILE CONTROLS */
+#controls {
+  position:absolute;
+  bottom:20px;
+  width:100%;
+  display:flex;
+  justify-content:center;
+  gap:20px;
+}
+
+.btn {
+  width:70px;
+  height:70px;
+  background:rgba(255,255,255,0.2);
+  border-radius:50%;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  font-size:25px;
+  color:white;
+  user-select:none;
+}
+</style>
+</head>
+
+<body>
+
+<div id="menu">
+  <h1>🏃 Highway Escape</h1>
+  <button onclick="startGame()">Start</button>
+</div>
+
+<div id="gameOver">
+  <h1>💀 Caught!</h1>
+  <p id="scoreText"></p>
+  <button onclick="location.reload()">Play Again</button>
+</div>
+
+<canvas id="gameCanvas" width="600" height="800"></canvas>
+
+<!-- TOUCH CONTROLS -->
+<div id="controls">
+  <div class="btn" id="leftBtn">⬅️</div>
+  <div class="btn" id="forwardBtn">⬆️</div>
+  <div class="btn" id="rightBtn">➡️</div>
+</div>
+
+<!-- SOUND -->
+<audio id="engine" src="https://www.soundjay.com/transportation/sounds/car-driving-1.mp3" loop></audio>
+<audio id="crash" src="https://www.soundjay.com/transportation/sounds/car-crash-1.mp3"></audio>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+let gameRunning = false;
+let score = 0;
+
+// PLAYER (CONTROLLED)
+let player = { x:280, y:650, size:30 };
+
+// CHASER (AI)
+let chaser = { x:280, y:750, size:30 };
+
+// CARS
+let cars = [];
+let spawnTimer = 0;
+
+// CONTROLS STATE
+let moveLeft=false, moveRight=false, moveForward=false;
+
+// TOUCH EVENTS
+function addTouch(id, action){
+  let btn = document.getElementById(id);
+  btn.ontouchstart = ()=> action(true);
+  btn.ontouchend = ()=> action(false);
+}
+
+addTouch("leftBtn", v=>moveLeft=v);
+addTouch("rightBtn", v=>moveRight=v);
+addTouch("forwardBtn", v=>moveForward=v);
+
+// KEYBOARD (for laptop)
+document.addEventListener("keydown", e=>{
+  if(e.key==="ArrowLeft") moveLeft=true;
+  if(e.key==="ArrowRight") moveRight=true;
+  if(e.key==="ArrowUp") moveForward=true;
+});
+document.addEventListener("keyup", e=>{
+  if(e.key==="ArrowLeft") moveLeft=false;
+  if(e.key==="ArrowRight") moveRight=false;
+  if(e.key==="ArrowUp") moveForward=false;
+});
+
+function startGame(){
+  document.getElementById("menu").style.display="none";
+  gameRunning=true;
+  document.getElementById("engine").play();
+  requestAnimationFrame(gameLoop);
+}
+
+function gameOver(){
+  gameRunning=false;
+  document.getElementById("engine").pause();
+  document.getElementById("crash").play();
+  document.getElementById("gameOver").style.display="block";
+  document.getElementById("scoreText").innerText="Score: "+score;
+}
+
+// COLLISION
+function collide(a,b){
+  return a.x < b.x + b.w &&
+         a.x + a.size > b.x &&
+         a.y < b.y + b.h &&
+         a.y + a.size > b.y;
+}
+
+// DRAW ROAD
+let roadOffset=0;
+function drawRoad(){
+  ctx.fillStyle="#555";
+  ctx.fillRect(0,0,600,800);
+
+  ctx.strokeStyle="white";
+  ctx.lineWidth=5;
+
+  roadOffset+=6;
+
+  for(let i=-40;i<800;i+=40){
+    ctx.beginPath();
+    ctx.moveTo(300,i+roadOffset%40);
+    ctx.lineTo(300,i+20+roadOffset%40);
+    ctx.stroke();
+  }
+}
+
+// DRAW CAR
+function drawCar(x,y){
+  ctx.fillStyle="red";
+  ctx.fillRect(x,y,50,80);
+
+  ctx.fillStyle="lightblue";
+  ctx.fillRect(x+5,y+10,40,20);
+
+  ctx.fillStyle="black";
+  ctx.fillRect(x+5,y+60,10,10);
+  ctx.fillRect(x+35,y+60,10,10);
+}
+
+// GAME LOOP
+function gameLoop(){
+  if(!gameRunning) return;
+
+  ctx.clearRect(0,0,600,800);
+  drawRoad();
+
+  // PLAYER CONTROL
+  if(moveLeft && player.x>50) player.x-=6;
+  if(moveRight && player.x<520) player.x+=6;
+  if(moveForward) player.y-=3;
+  else player.y+=1; // slows down if not moving
+
+  ctx.font="30px Arial";
+  ctx.fillText("🏃", player.x, player.y);
+
+  // CHASER AI
+  if(chaser.x < player.x) chaser.x+=1.5;
+  if(chaser.x > player.x) chaser.x-=1.5;
+
+  chaser.y -= moveForward ? 1 : -1; // catches faster if you slow
+
+  ctx.fillText("👮", chaser.x, chaser.y);
+
+  // SPAWN CARS
+  spawnTimer++;
+  if(spawnTimer>50){
+    let lanes=[100,250,400];
+    let x=lanes[Math.floor(Math.random()*3)];
+    cars.push({x:x,y:-80,w:50,h:80});
+    spawnTimer=0;
+  }
+
+  // MOVE CARS
+  for(let i=cars.length-1;i>=0;i--){
+    let c=cars[i];
+    c.y+=8;
+    drawCar(c.x,c.y);
+
+    if(collide(player,c)) gameOver();
+
+    if(c.y>800){
+      cars.splice(i,1);
+      score++;
+    }
+  }
+
+  // CHASER CATCH
+  if(Math.abs(player.x-chaser.x)<20 && Math.abs(player.y-chaser.y)<30){
+    gameOver();
+  }
+
+  // SCORE
+  ctx.fillStyle="white";
+  ctx.fillText("Score: "+score,10,30);
+
+  requestAnimationFrame(gameLoop);
+}
+</script>
+
+</body>
+</html>
